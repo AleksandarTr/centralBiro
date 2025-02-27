@@ -6,6 +6,6 @@
         x:Class="CentralBiro.MainWindow"
         Title="CentralBiro">
     <StackPanel>
-        <Button Content = "Start" Click = "Button_OnClick" />
+        <Button Content = "Start" Click = "StartServer" />
     </StackPanel>
 </Window>
