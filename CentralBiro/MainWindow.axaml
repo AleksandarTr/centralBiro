@@ -6,6 +6,8 @@
         x:Class="CentralBiro.MainWindow"
         Title="CentralBiro">
     <StackPanel>
-        <Button Content = "Start" Click = "StartServer" />
+        <Button Name = "StartServerButton" Content = "Start" Click = "StartServer" />
+        <Button Name = "StopServerButton" Content = "Stop" Click = "StopServer" IsEnabled="False" />
+        <StackPanel Name="ServerLog"/>
     </StackPanel>
 </Window>
