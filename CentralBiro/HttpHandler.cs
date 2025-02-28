@@ -123,6 +123,7 @@ public class HttpHandler
         int start = request.IndexOf("\r\n\r\n");
         if (start == -1) return arguments;
         start += 4;
+        if (request.Substring(start) == "") return arguments;
         
         string[] keyValues = request.Substring(start).Split('&');
         foreach (string keyValue in keyValues)
