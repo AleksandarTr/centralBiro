@@ -1,30 +1,34 @@
-using System;
-using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using System.IO;
 using System.Net;
-using System.Net.Security;
 using System.Net.Sockets;
-using System.Security.Authentication;
-using System.Text;
 
 namespace CentralBiro;
 
 public partial class MainWindow : Window
 {
-    public static string rootPathUrl { get; } = Directory.GetCurrentDirectory();
-    private static bool isServerActive = false;
-    private Thread requestReciever;
+    public static string RootPathUrl { get; } = Directory.GetCurrentDirectory();
+    private bool _isServerActive = false;
+    private bool _isClosing = false;
+    private Thread _requestReciever;
     
     public MainWindow()
     {
         InitializeComponent();
     }
 
-    public void log(string text)
+    protected override void OnClosing(WindowClosingEventArgs e)
     {
+        base.OnClosing(e);
+        _isClosing = true;
+        if(_isServerActive) _isServerActive = false;
+    }
+
+    public void Log(string text)
+    {
+        if(_isClosing) return;
         Avalonia.Threading.Dispatcher.UIThread.Invoke(() =>
         {
             ServerLog.Children.Add(new TextBlock { Text = text });
@@ -35,26 +39,26 @@ public partial class MainWindow : Window
     {
         StartServerButton.IsEnabled = false;
         StopServerButton.IsEnabled = true;
-        isServerActive = true;
+        _isServerActive = true;
 
-        requestReciever = new Thread(() =>
+        _requestReciever = new Thread(() =>
         {
             TcpListener tcpListener = new TcpListener(IPAddress.Any, 5000);
             tcpListener.Start();
-            log("Server started");
+            Log("Server started");
 
-            while (isServerActive)
+            while (_isServerActive)
             {
                 while (tcpListener.Pending())
                 {
                     TcpClient client = tcpListener.AcceptTcpClient();
-                    log("Client connected: " + client.Client.RemoteEndPoint);
+                    Log("Client connected: " + client.Client.RemoteEndPoint);
                     
                     new Thread(() =>
                     {
                         string remoteEndPoint = client.Client.RemoteEndPoint.ToString();
-                        HttpHandler.Instance.handleHttpConnection(client);
-                        log("Client disconnected: " + remoteEndPoint);
+                        HttpHandler.Instance.HandleHttpConnection(client);
+                        Log("Client disconnected: " + remoteEndPoint);
                     }).Start();
                 }
                 
@@ -62,17 +66,18 @@ public partial class MainWindow : Window
             }
 
             tcpListener.Stop();
+            Log("Server stopped");
+            if (_isClosing) return;
             Avalonia.Threading.Dispatcher.UIThread.Invoke(() => { 
                 StartServerButton.IsEnabled = true;
                 StopServerButton.IsEnabled = false;
             });
         });
-        requestReciever.Start();
+        _requestReciever.Start();
     }
 
     private void StopServer(object? sender, RoutedEventArgs e)
     {
-        log("Server stopped");
-        isServerActive = false;
+        _isServerActive = false;
     }
 }
