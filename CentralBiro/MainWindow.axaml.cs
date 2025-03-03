@@ -35,6 +35,24 @@ public partial class MainWindow : Window
         });
     }
 
+    private void ListenServer(TcpListener listener, bool secure)
+    {
+        while (listener.Pending())
+        {
+            TcpClient client = listener.AcceptTcpClient();
+            Log("Client connected: " + client.Client.RemoteEndPoint);
+                
+            new Thread(() =>
+            {
+                string remoteEndPoint = client.Client.RemoteEndPoint.ToString();
+                HttpHandler.Instance.HandleHttpConnection(client, secure);
+                Log("Client disconnected: " + remoteEndPoint);
+            }).Start();
+        }
+            
+        Thread.Sleep(100);
+    }
+
     private void StartServer(object? sender, RoutedEventArgs e)
     {
         StartServerButton.IsEnabled = false;
@@ -43,29 +61,22 @@ public partial class MainWindow : Window
 
         _requestReciever = new Thread(() =>
         {
-            TcpListener tcpListener = new TcpListener(IPAddress.Any, 5000);
-            tcpListener.Start();
+            TcpListener httpsListener = new TcpListener(IPAddress.Any, 5000);
+            TcpListener httpListener = new TcpListener(IPAddress.Any, 4999);
+            httpsListener.Start();
+            httpListener.Start();
             Log("Server started");
 
-            while (_isServerActive)
+            Thread httpThread = new Thread(() =>
             {
-                while (tcpListener.Pending())
-                {
-                    TcpClient client = tcpListener.AcceptTcpClient();
-                    Log("Client connected: " + client.Client.RemoteEndPoint);
-                    
-                    new Thread(() =>
-                    {
-                        string remoteEndPoint = client.Client.RemoteEndPoint.ToString();
-                        HttpHandler.Instance.HandleHttpConnection(client);
-                        Log("Client disconnected: " + remoteEndPoint);
-                    }).Start();
-                }
-                
-                Thread.Sleep(100);
-            }
+                while(_isServerActive) ListenServer(httpListener, false);
+                httpListener.Stop();
+            });
+            httpThread.Start();
+            while (_isServerActive) ListenServer(httpsListener, true);
 
-            tcpListener.Stop();
+            httpsListener.Stop();
+            httpThread.Join();
             Log("Server stopped");
             if (_isClosing) return;
             Avalonia.Threading.Dispatcher.UIThread.Invoke(() => { 

@@ -50,7 +50,7 @@ public class HttpHandler
         _sslCertificate = new X509Certificate2(cert.Export(X509ContentType.Pfx));
     }
 
-    private string? ReceiveRequest(SslStream stream)
+    private string? ReceiveRequest(Stream stream)
     {
         byte[] buffer = new byte[2048];
         StringBuilder messageData = new StringBuilder();
@@ -69,18 +69,22 @@ public class HttpHandler
             if (messageData.ToString().IndexOf("\r\n\r\n") > -1 || messageData.ToString().IndexOf("\n\n") > -1) break;
         } while (bytes > 0);
         
+        Console.WriteLine("Request start");
         Console.WriteLine(messageData.ToString());
+        Console.WriteLine("Request end");
         return messageData.ToString();
     }
 
-    private bool ProcessRequest(string? request, SslStream stream)
+    private bool ProcessRequest(string? request, Stream stream)
     {
+        request = request?.Trim();
         if (String.IsNullOrEmpty(request)) return false;
         Args args = GetRequestArguments(request);
         
         int endInd = request.IndexOf(" HTTP/1.1");
+        if (endInd == -1) return false;
         request = request.Remove(endInd, request.Length - endInd);
-        int startInd = request.LastIndexOf("\n");
+        int startInd = request.LastIndexOf("\r\n");
         if (startInd == -1) startInd = 0;
         request = request.Remove(0, startInd);
         string httpMethod = request.Split(' ')[0];
@@ -109,10 +113,18 @@ public class HttpHandler
     
     private string HttpHeader(int statusCode, string contentType, int contentLength)
     {
-        string header = "HTTP/1.1 " + statusCode + "\n" +
-                        "Server: simpleSSLServer\n" +
-                        "Content-Type: " + contentType + 
-                        "\nContent-Length" + contentLength + "\n\n";
+        string message = statusCode switch
+        {
+            200 => "OK",
+            400 => "Bad Request",
+            404 => "Not Found",
+            _ => "Unkonwn"
+        };
+
+        string header = "HTTP/1.1 " + statusCode + " " + message + "\r\n" +
+                        "Server: simpleSSLServer\r\n" +
+                        "Content-Type: " + contentType + "\r\n\r\n";
+                        // "\r\nContent-Length:" + contentLength + "\r\n";
         
         return header;
     }
@@ -174,13 +186,14 @@ public class HttpHandler
         if (!File.Exists(filePath))
         {
             statusCode = 404;
-            contentType = "text";
+            contentType = "text/plain";
             return "File not found"u8.ToArray();
         }
 
+        Console.WriteLine(File.ReadAllText(filePath));
         byte[] fileData = File.ReadAllBytes(filePath); 
         bool knownType = _contentTypes.TryGetValue(request.ResourceUrl.Substring(request.ResourceUrl.LastIndexOf('.')), out contentType);
-        if (!knownType) contentType = "text";
+        if (!knownType) contentType = "text/plain";
         
         statusCode = 200;
         return fileData;
@@ -189,7 +202,7 @@ public class HttpHandler
     private byte[] PrepareHttpResponse(Request request)
     {
         int statusCode = 200;
-        string contentType = "text";
+        string contentType = "text/plain";
         
         byte[]? response = ServiceRequest(request, out statusCode, out contentType);
         if(response != null) return response;
@@ -209,9 +222,12 @@ public class HttpHandler
         GetCertificate();
     }
 
-    public void HandleHttpConnection(TcpClient client)
+    public void HandleHttpConnection(TcpClient client, bool isSecure)
     {
-        SslStream? stream = PrepareSslStream(client);
+        Stream? stream;
+        if(isSecure) stream = PrepareSslStream(client);
+        else stream = client.GetStream();
+        
         if (stream == null)
         {
             client.Close();
