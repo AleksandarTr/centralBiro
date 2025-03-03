@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
-namespace CentralBiro;
+namespace CentralBiro.Database;
 
 public class CentralContext : DbContext
 {
@@ -9,7 +9,7 @@ public class CentralContext : DbContext
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
-        optionsBuilder.UseSqlite("Data Source=centralbiro.db");
+        optionsBuilder.UseSqlite("Data Source=cb.db");
     }
 
     public CentralContext()

@@ -4,7 +4,7 @@ using System.IO;
 using System.Text;
 using System.Xml.Serialization;
 
-namespace CentralBiro;
+namespace CentralBiro.Service;
 
 public abstract class ServiceClass
 {
@@ -13,10 +13,10 @@ public abstract class ServiceClass
 
     protected byte[] Serialize<T>(T obj)
     {
-        XmlSerializer serializer = new XmlSerializer(typeof(T));
-        StringWriter writer = new StringWriter();
+        XmlSerializer serializer = new XmlSerializer(typeof(T)); 
+        MemoryStream writer = new MemoryStream();
         serializer.Serialize(writer, obj);
-        return Encoding.UTF8.GetBytes(writer.ToString());
+        return writer.ToArray();
     }
     
     public byte[] Execute(HttpHandler.Request request, out int statusCode, out string contentType)
@@ -27,7 +27,7 @@ public abstract class ServiceClass
         if(found) return requestDelegate(request, out statusCode, out contentType);
 
         statusCode = 404;
-        contentType = "text";
+        contentType = "text/plain";
         return "Could not find a service method to execute the request."u8.ToArray();
     }
 }

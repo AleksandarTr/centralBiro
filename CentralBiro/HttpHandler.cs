@@ -8,9 +8,12 @@ using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading;
+using CentralBiro.Service;
 using Args = System.Collections.Generic.Dictionary<string, string>;
 
 namespace CentralBiro;
+
+public class InvalidHttpRequestException(string message) : Exception(message);
 
 public class HttpHandler
 {
@@ -41,25 +44,22 @@ public class HttpHandler
     
     private void GetCertificate()
     {
-        try
-        {
-            var cert = X509Certificate2.CreateFromPemFile(
-                _certPath + Path.DirectorySeparatorChar + "server.crt",
-                _certPath + Path.DirectorySeparatorChar + "server.key");
-            _sslCertificate = new X509Certificate2(cert.Export(X509ContentType.Pfx));
-        }
-        catch (Exception ex) {}
+        var cert = X509Certificate2.CreateFromPemFile(
+            _certPath + Path.DirectorySeparatorChar + "server.crt",
+            _certPath + Path.DirectorySeparatorChar + "server.key");
+        _sslCertificate = new X509Certificate2(cert.Export(X509ContentType.Pfx));
     }
 
-    private string ReceiveRequest(SslStream stream)
+    private string? ReceiveRequest(SslStream stream)
     {
         byte[] buffer = new byte[2048];
         StringBuilder messageData = new StringBuilder();
         int bytes = -1;
+        
         do
         {
             try { bytes = stream.Read(buffer, 0, buffer.Length); }
-            catch (IOException _) { return ""; }
+            catch (IOException _) { return null; }
             
             Decoder decoder = Encoding.UTF8.GetDecoder();
             char[] chars = new char[decoder.GetCharCount(buffer, 0, bytes)];
@@ -73,9 +73,9 @@ public class HttpHandler
         return messageData.ToString();
     }
 
-    private bool ProcessRequest(string request, SslStream stream)
+    private bool ProcessRequest(string? request, SslStream stream)
     {
-        if (request == "") return false;
+        if (String.IsNullOrEmpty(request)) return false;
         Args args = GetRequestArguments(request);
         
         int endInd = request.IndexOf(" HTTP/1.1");
@@ -117,9 +117,10 @@ public class HttpHandler
         return header;
     }
 
-    private Args GetRequestArguments(string request)
+    private Args GetRequestArguments(string? request)
     {
         Args arguments = new Args();
+        if (request == null) return arguments;
         int start = request.IndexOf("\r\n\r\n");
         if (start == -1) return arguments;
         start += 4;
@@ -210,7 +211,7 @@ public class HttpHandler
 
     public void HandleHttpConnection(TcpClient client)
     {
-        SslStream stream = PrepareSslStream(client);
+        SslStream? stream = PrepareSslStream(client);
         if (stream == null)
         {
             client.Close();

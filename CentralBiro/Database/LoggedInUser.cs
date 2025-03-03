@@ -1,10 +1,12 @@
 using System;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 
-namespace CentralBiro;
+namespace CentralBiro.Database;
 
 [PrimaryKey(nameof(Token))]
+[Table("LoggedInUser")]
 public class LoggedInUser(User user, byte[] token)
 {
     public const int LoginDuration = 120;
