@@ -2,6 +2,8 @@ using System.Xml.Serialization;
 using CentralBiro;
 using CentralBiro.Database;
 using CentralBiro.Service;
+using FluentAssertions;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace CentralBiroTest;
@@ -172,51 +174,37 @@ public class LoginManagerTest
     public void ValidLoginRequestTest(string username, string password)
     {
         LoginManager.Instance.AddUser(username, password);
-        HttpHandler.Request request = new HttpHandler.Request()
-        {
-            Args = new Dictionary<string, string>() { {"username", username}, {"password", password} },
-            HttpMethod = "POST",
-            ResourceUrl = "/login"
-        };
-        int statusCode;
-        string contentType;
         
-        XmlSerializer serializer = new XmlSerializer(typeof(LoginManager.LoginResponse));
-        byte[] result = LoginManager.Instance.Execute(request, out statusCode, out contentType);
-        LoginManager.LoginResponse actual = (LoginManager.LoginResponse)serializer.Deserialize(new MemoryStream(result))!;
+        var result = new LoginController().LoginRequest(username, password);
         
-        Assert.IsTrue(actual.Success);
-        Assert.Greater(actual.Token.Length, 0);
-        Assert.AreEqual(statusCode, 200);
-        Assert.AreEqual(contentType, "text/xml");
+        Assert.IsInstanceOf<OkObjectResult>(result);
+        Assert.IsInstanceOf<LoginResponse>((result as OkObjectResult)!.Value);
+        LoginResponse? actual = (result as OkObjectResult)!.Value as LoginResponse?;
+        Assert.Greater(actual?.Token.Length, 0);
+        Assert.IsTrue(actual?.Success);
     }
 
     [Test]
-    [TestCase("username")]
-    [TestCase("password")]
-    public void MissingArgumentLoginRequestTest(string key)
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    public void MissingArgumentLoginRequestTest(int testCase)
     {
         string username = "test_1";
         string password = "Test_1__abcdef";
         LoginManager.Instance.AddUser(username, password);
-        
-        HttpHandler.Request request = new HttpHandler.Request()
+
+        var result = testCase switch
         {
-            Args = new Dictionary<string, string>() { {"username", username}, {"password", password} },
-            HttpMethod = "POST",
-            ResourceUrl = "/login"
+            1 => new LoginController().LoginRequest(username: username),
+            2 => new LoginController().LoginRequest(password: password),
+            3 => new LoginController().LoginRequest(),
         };
-        int statusCode;
-        string contentType;
-        request.Args.Remove(key);
         
-        XmlSerializer serializer = new XmlSerializer(typeof(LoginManager.LoginResponse));
-        byte[] result = LoginManager.Instance.Execute(request, out statusCode, out contentType);
-        LoginManager.LoginResponse actual = (LoginManager.LoginResponse)serializer.Deserialize(new MemoryStream(result))!;
-        
-        Assert.IsFalse(actual.Success);
-        Assert.AreEqual(statusCode, 400);
-        Assert.AreEqual(contentType, "text/xml");
+        Assert.IsInstanceOf<BadRequestObjectResult>(result);
+        Assert.IsInstanceOf<LoginResponse>((result as BadRequestObjectResult)!.Value);
+        LoginResponse? actual = (result as BadRequestObjectResult)!.Value as LoginResponse?;
+        Assert.IsFalse(actual?.Success);
     }
     
     [Test]
@@ -224,48 +212,13 @@ public class LoginManagerTest
     {
         string username = "test_1";
         string password = "Test_1__abcdef";
-        HttpHandler.Request request = new HttpHandler.Request()
-        {
-            Args = new Dictionary<string, string>() { {"username", username}, {"password", password} },
-            HttpMethod = "POST",
-            ResourceUrl = "/login"
-        };
-        int statusCode;
-        string contentType;
         
-        XmlSerializer serializer = new XmlSerializer(typeof(LoginManager.LoginResponse));
-        byte[] result = LoginManager.Instance.Execute(request, out statusCode, out contentType);
-        LoginManager.LoginResponse actual = (LoginManager.LoginResponse)serializer.Deserialize(new MemoryStream(result))!;
+        var result = new LoginController().LoginRequest(username, password);
         
-        Assert.IsFalse(actual.Success);
-        Assert.AreEqual(statusCode, 404);
-        Assert.AreEqual(contentType, "text/xml");
-    }
-
-    [Test]
-    [TestCase("POST", "/login/apple")]
-    [TestCase("GET", "/login")]
-    [TestCase("DELETE", "/login/dot/net")]
-    [TestCase("", "/login")]
-    public void BadLoginRequestTest(string httpMethod, string resourceUrl)
-    {
-        string username = "test_1";
-        string password = "Test_1__abcdef";
-        LoginManager.Instance.AddUser(username, password);
-        
-        HttpHandler.Request request = new HttpHandler.Request()
-        {
-            Args = new Dictionary<string, string>() { {"username", username}, {"password", password} },
-            HttpMethod = httpMethod,
-            ResourceUrl = resourceUrl
-        };
-        int statusCode;
-        string contentType;
-        
-        byte[] actual = LoginManager.Instance.Execute(request, out statusCode, out contentType);
-        
-        Assert.AreEqual(statusCode, 404);
-        Assert.AreEqual(contentType, "text/plain");
+        Assert.IsInstanceOf<NotFoundObjectResult>(result);
+        Assert.IsInstanceOf<LoginResponse>((result as NotFoundObjectResult)!.Value);
+        LoginResponse? actual = (result as NotFoundObjectResult)!.Value as LoginResponse?;
+        Assert.IsFalse(actual?.Success);
     }
 
     [SetUp]

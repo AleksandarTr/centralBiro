@@ -4,91 +4,85 @@ using Avalonia.Interactivity;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using CentralBiro.Service;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace CentralBiro;
 
 public partial class MainWindow : Window
 {
     public static string RootPathUrl { get; } = Directory.GetCurrentDirectory();
-    private bool _isServerActive = false;
-    private bool _isClosing = false;
-    private Thread _requestReciever;
+    private static readonly string CertPath = MainWindow.RootPathUrl + Path.DirectorySeparatorChar + "certs";
+    private static readonly string RootPath = MainWindow.RootPathUrl + Path.DirectorySeparatorChar + "www";
+
+    private WebApplication _app;
+    private const int HttpPort = 4999;
+    private const int HttpsPort = 5000;
     
     public MainWindow()
     {
         InitializeComponent();
-    }
-
-    protected override void OnClosing(WindowClosingEventArgs e)
-    {
-        base.OnClosing(e);
-        _isClosing = true;
-        if(_isServerActive) _isServerActive = false;
-    }
-
-    public void Log(string text)
-    {
-        if(_isClosing) return;
-        Avalonia.Threading.Dispatcher.UIThread.Invoke(() =>
+        
+        WebApplicationBuilder builder = WebApplication.CreateBuilder();
+        builder.WebHost.ConfigureKestrel(options =>
         {
-            ServerLog.Children.Add(new TextBlock { Text = text });
-        });
-    }
-
-    private void ListenServer(TcpListener listener, bool secure)
-    {
-        while (listener.Pending())
-        {
-            TcpClient client = listener.AcceptTcpClient();
-            Log("Client connected: " + client.Client.RemoteEndPoint);
-                
-            new Thread(() =>
+            options.Listen(IPAddress.Any, HttpPort);
+            options.Listen(IPAddress.Any, HttpsPort, listenOptions =>
             {
-                string remoteEndPoint = client.Client.RemoteEndPoint.ToString();
-                HttpHandler.Instance.HandleHttpConnection(client, secure);
-                Log("Client disconnected: " + remoteEndPoint);
-            }).Start();
-        }
-            
-        Thread.Sleep(100);
+                listenOptions.UseHttps(CertPath + Path.DirectorySeparatorChar + "server.pfx", "Test1234");
+            });
+        });
+        builder.Services.AddControllers().AddJsonOptions(options =>
+        {
+            options.JsonSerializerOptions.PropertyNamingPolicy = null; // Keeps property names as-is
+            options.JsonSerializerOptions.WriteIndented = true; // Pretty-print JSON
+        });
+        builder.Logging.AddConsole();
+        
+        builder.Services.AddEndpointsApiExplorer();
+        builder.Services.AddSwaggerGen(c =>
+        {
+            c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+            {
+                Title = "My API",
+                Version = "v1",
+                Description = "An example API with Swagger"
+            });
+        });
+        
+        
+        _app = builder.Build();
+        _app.UseRouting();
+        _app.MapControllers();
+        _app.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = new PhysicalFileProvider(RootPath)
+        });
+        _app.UseSwagger();
+        _app.UseSwaggerUI(c =>
+        {
+            c.SwaggerEndpoint("/swagger/v1/swagger.json", "My API v1"); // API Docs URL
+            c.RoutePrefix = "swagger";
+        });
     }
 
     private void StartServer(object? sender, RoutedEventArgs e)
     {
+        _app.Start();
         StartServerButton.IsEnabled = false;
         StopServerButton.IsEnabled = true;
-        _isServerActive = true;
-
-        _requestReciever = new Thread(() =>
-        {
-            TcpListener httpsListener = new TcpListener(IPAddress.Any, 5000);
-            TcpListener httpListener = new TcpListener(IPAddress.Any, 4999);
-            httpsListener.Start();
-            httpListener.Start();
-            Log("Server started");
-
-            Thread httpThread = new Thread(() =>
-            {
-                while(_isServerActive) ListenServer(httpListener, false);
-                httpListener.Stop();
-            });
-            httpThread.Start();
-            while (_isServerActive) ListenServer(httpsListener, true);
-
-            httpsListener.Stop();
-            httpThread.Join();
-            Log("Server stopped");
-            if (_isClosing) return;
-            Avalonia.Threading.Dispatcher.UIThread.Invoke(() => { 
-                StartServerButton.IsEnabled = true;
-                StopServerButton.IsEnabled = false;
-            });
-        });
-        _requestReciever.Start();
     }
 
     private void StopServer(object? sender, RoutedEventArgs e)
     {
-        _isServerActive = false;
+        _app.StopAsync().Wait();
+        StartServerButton.IsEnabled = true;
+        StopServerButton.IsEnabled = false;
     }
 }

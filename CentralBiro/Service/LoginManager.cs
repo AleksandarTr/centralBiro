@@ -1,35 +1,29 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Serialization;
 using CentralBiro.Database;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace CentralBiro.Service;
 
-public class LoginManager : ServiceClass
+public struct LoginResponse(bool success, byte[] token)
 {
-    protected override Dictionary<Tuple<string, string>, RequestDelegate> RequestDelegates { get; }
+    public bool Success { get; set; } = success;
+    public byte[] Token { get; set; } = token;
+}
 
-    private LoginManager()
-    {
-        RequestDelegates = new Dictionary<Tuple<string, string>, RequestDelegate>
-        {
-            { new Tuple<string, string>("POST", ""), LoginRequest}
-        };
-    }
+public class LoginManager
+{
+    private LoginManager() { }
 
     public static LoginManager Instance { get; } = new LoginManager();
-
-    [Serializable, XmlRoot("LoginResponse")]
-    public struct LoginResponse(bool success, byte[] token)
-    {
-        public bool Success = success;
-        public byte[] Token = token;
-    }
 
     public byte[] CalculateHashedPassword(string password, byte[] salt)
     {
@@ -63,42 +57,13 @@ public class LoginManager : ServiceClass
         return sha256.ComputeHash(Encoding.UTF8.GetBytes(timestamp.ToString()));
     }
 
-    private byte[] GetToken(User user)
+    public byte[] GetToken(User user)
     {
         using var context = new CentralContext();
         LoggedInUser? loggedInUser = context.LoggedInUsers.FirstOrDefault(u => u.User == user);
         if (loggedInUser == null) loggedInUser = AddLoggedInUser(user, GenerateToken());
         else ExtendLoggedInUser(loggedInUser);
         return loggedInUser.Token;
-    }
-
-    private byte[] LoginRequest(HttpHandler.Request request, out int statusCode, out string contentType)
-    {
-        contentType = "text/xml";
-        if (!request.Args.ContainsKey("username") || !request.Args.ContainsKey("password"))
-        {
-            statusCode = 400;
-            return Serialize(new LoginResponse(false, "Arguments missing"u8.ToArray()));
-        }
-        
-        using var context = new CentralContext();
-        User? user = context.Users.AsNoTracking().FirstOrDefault(u => u.Username == request.Args["username"]);
-        if (user == null)
-        {
-            statusCode = 404;
-            return Serialize(new LoginResponse(false, "Username not found"u8.ToArray()));
-        }
-        
-        byte[] password = CalculateHashedPassword(request.Args["password"], user.Salt);
-        if (!user.Password.SequenceEqual(password))
-        {
-            statusCode = 404;
-            return Serialize(new LoginResponse(false, "Wrong password"u8.ToArray()));
-        }
-        
-        byte[] token = GetToken(user);
-        statusCode = 200;
-        return Serialize(new LoginResponse(true, token));
     }
 
     public bool Verify(byte[] token)
@@ -164,5 +129,34 @@ public class LoginManager : ServiceClass
         using var context = new CentralContext();
         LoggedInUser? loggedInUser = context.LoggedInUsers.Include(user => user.User).FirstOrDefault(user => user.Token == token);
         return loggedInUser?.User.Id;
+    }
+}
+
+[ApiController]
+[Route("api/login")]
+public class LoginController : ControllerBase
+{
+    [HttpPost]
+    public IActionResult LoginRequest([FromForm] string? username = null, [FromForm] string? password = null)
+    {
+        Console.WriteLine($"Login request: {username}, {password}");
+        if (username == null)
+            return BadRequest(new LoginResponse(false, "Username not provided"u8.ToArray()));
+
+        if (password == null)
+            return BadRequest(new LoginResponse(false, "Password not provided"u8.ToArray()));
+
+        using var context = new CentralContext();
+        User? user = context.Users.AsNoTracking().FirstOrDefault(u => u.Username == username);
+        if (user == null)
+            return NotFound(new LoginResponse(false, "No user with provided username/password combination"u8.ToArray()));
+
+
+        byte[] hashedPassword = LoginManager.Instance.CalculateHashedPassword(password, user.Salt);
+        if (!user.Password.SequenceEqual(hashedPassword))
+            return NotFound(new LoginResponse(false, "No user with provided username/password combination"u8.ToArray()));
+
+        byte[] token = LoginManager.Instance.GetToken(user);
+        return Ok(new LoginResponse(true, token));
     }
 }
