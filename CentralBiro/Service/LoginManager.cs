@@ -144,6 +144,13 @@ public class LoginManager
         LoggedInUser? loggedInUser = context.LoggedInUsers.Include(user => user.User).FirstOrDefault(user => user.Token == token);
         return loggedInUser?.User.Id;
     }
+
+    public User? GetUser(byte[] token)
+    {
+        using var context = new CentralContext();
+        LoggedInUser? loggedInUser = context.LoggedInUsers.Include(user => user.User).FirstOrDefault(user => user.Token == token);
+        return loggedInUser?.User;
+    }
 }
 
 [ApiController]
