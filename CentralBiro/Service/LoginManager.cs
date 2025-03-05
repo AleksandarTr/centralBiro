@@ -1,13 +1,10 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Xml.Serialization;
+using System.Threading;
 using CentralBiro.Database;
-using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -21,9 +18,26 @@ public struct LoginResponse(bool success, byte[] token)
 
 public class LoginManager
 {
-    private LoginManager() { }
+    private LoginManager()
+    {
+        // new Thread(() =>
+        // {
+        //     while (true)
+        //     {
+        //         DeleteExpiredTokens();
+        //         Thread.Sleep(5 * 60 * 1000);
+        //     }
+        // }){IsBackground = true}.Start();
+    }
 
     public static LoginManager Instance { get; } = new LoginManager();
+
+    private void DeleteExpiredTokens()
+    {
+        using var context = new CentralContext();
+        context.LoggedInUsers.Where(user => DateTime.Now > user.Expiration).ExecuteDelete();
+        context.SaveChanges();
+    }
 
     public byte[] CalculateHashedPassword(string password, byte[] salt)
     {

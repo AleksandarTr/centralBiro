@@ -1,13 +1,12 @@
-using System.Threading;
+using System;
+using System.Diagnostics;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using System.IO;
 using System.Net;
-using System.Net.Sockets;
-using CentralBiro.Service;
+using Avalonia.Media;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
@@ -18,8 +17,8 @@ namespace CentralBiro;
 public partial class MainWindow : Window
 {
     public static string RootPathUrl { get; } = Directory.GetCurrentDirectory();
-    private static readonly string CertPath = MainWindow.RootPathUrl + Path.DirectorySeparatorChar + "certs";
-    private static readonly string RootPath = MainWindow.RootPathUrl + Path.DirectorySeparatorChar + "www";
+    private static readonly string CertPath = RootPathUrl + Path.DirectorySeparatorChar + "certs";
+    private static readonly string RootPath = RootPathUrl + Path.DirectorySeparatorChar + "www";
 
     private WebApplication _app;
     private const int HttpPort = 4999;
@@ -28,7 +27,78 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+    }
+
+    public bool Log(string text, Color? color = null)
+    {
+        try
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Invoke(() =>
+            {
+                ServerLog.Children.Add(new TextBlock
+                {
+                    Text = text,
+                    Foreground = new SolidColorBrush(color ?? Colors.White)
+                });
+            });
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Failed logging:" + text);
+            Console.WriteLine(ex.Message);
+            return false;
+        }
+    }
+
+    class WindowLogger(string categoryName, MainWindow window) : ILogger
+    {
+        private readonly string _categoryName = categoryName;
+        private readonly MainWindow _window = window;
         
+        public IDisposable BeginScope<TState>(TState state)
+        {
+            return null;
+        }
+
+        public bool IsEnabled(LogLevel logLevel)
+        {
+            if (logLevel == LogLevel.None) return false;
+            return true;
+        }
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (!IsEnabled(logLevel)) return;
+            var logMessage = formatter(state, exception);
+            Color color = logLevel switch
+            {
+                LogLevel.Trace => Colors.DimGray,
+                LogLevel.Debug => Colors.Gray,
+                LogLevel.Information => Colors.White,
+                LogLevel.Warning => Colors.Yellow,
+                LogLevel.Error => Colors.Orange,
+                LogLevel.Critical => Colors.Red,
+            };
+            _window.Log(logMessage);
+        }
+    }
+
+    public class WindowLoggerProvider(MainWindow window) : ILoggerProvider
+    {
+        private readonly MainWindow _window = window;
+        
+        public ILogger CreateLogger(string categoryName)
+        {
+            return new WindowLogger(categoryName, window);
+        }
+
+        public void Dispose()
+        { }
+    }
+
+    private void StartServer(object? sender, RoutedEventArgs e)
+    {
         WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.WebHost.ConfigureKestrel(options =>
         {
@@ -38,24 +108,9 @@ public partial class MainWindow : Window
                 listenOptions.UseHttps(CertPath + Path.DirectorySeparatorChar + "server.pfx", "Test1234");
             });
         });
-        builder.Services.AddControllers().AddJsonOptions(options =>
-        {
-            options.JsonSerializerOptions.PropertyNamingPolicy = null; // Keeps property names as-is
-            options.JsonSerializerOptions.WriteIndented = true; // Pretty-print JSON
-        });
-        builder.Logging.AddConsole();
-        
-        builder.Services.AddEndpointsApiExplorer();
-        builder.Services.AddSwaggerGen(c =>
-        {
-            c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
-            {
-                Title = "My API",
-                Version = "v1",
-                Description = "An example API with Swagger"
-            });
-        });
-        
+        builder.Services.AddControllers();
+        builder.Logging.ClearProviders();
+        builder.Logging.AddProvider(new WindowLoggerProvider(this));
         
         _app = builder.Build();
         _app.UseRouting();
@@ -64,16 +119,6 @@ public partial class MainWindow : Window
         {
             FileProvider = new PhysicalFileProvider(RootPath)
         });
-        _app.UseSwagger();
-        _app.UseSwaggerUI(c =>
-        {
-            c.SwaggerEndpoint("/swagger/v1/swagger.json", "My API v1"); // API Docs URL
-            c.RoutePrefix = "swagger";
-        });
-    }
-
-    private void StartServer(object? sender, RoutedEventArgs e)
-    {
         _app.Start();
         StartServerButton.IsEnabled = false;
         StopServerButton.IsEnabled = true;
@@ -81,8 +126,9 @@ public partial class MainWindow : Window
 
     private void StopServer(object? sender, RoutedEventArgs e)
     {
-        _app.StopAsync().Wait();
-        StartServerButton.IsEnabled = true;
         StopServerButton.IsEnabled = false;
+        _app.DisposeAsync();
+        StartServerButton.IsEnabled = true;
+        Log("Server stopped.");
     }
 }

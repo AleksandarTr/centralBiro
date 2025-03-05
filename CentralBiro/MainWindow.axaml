@@ -5,9 +5,11 @@
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
         x:Class="CentralBiro.MainWindow"
         Title="CentralBiro">
-    <StackPanel>
-        <Button Name = "StartServerButton" Content = "Start" Click = "StartServer" />
-        <Button Name = "StopServerButton" Content = "Stop" Click = "StopServer" IsEnabled="False" />
-        <StackPanel Name="ServerLog"/>
-    </StackPanel>
+    <ScrollViewer>
+        <StackPanel>
+            <Button Name = "StartServerButton" Content = "Start" Click = "StartServer" />
+            <Button Name = "StopServerButton" Content = "Stop" Click = "StopServer" IsEnabled="False" />
+            <StackPanel Name="ServerLog"/>
+        </StackPanel>
+    </ScrollViewer>
 </Window>
