@@ -28,7 +28,7 @@ public class User(string username, byte[] password, byte[] salt, int id)
     /// <c>User</c> class is used to transfer data about a user from the database. This constructor creates a
     /// blank user class, which is not intended to be stored in the database.
     /// </summary>
-    public User() : this("", new byte[0], new byte[0], -1) { }
+    public User() : this("", [], [], -1) { }
 
     /// <summary>
     /// <c>User</c> class is used to transfer data about a user from the database. This constructor auto assigns

@@ -1,10 +1,5 @@
-using System.Data.Common;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc.Diagnostics;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace CentralBiro.Database;
 
@@ -63,37 +58,24 @@ public class CentralContext : DbContext
     /// </list>
     /// </value>
     public DbSet<LoggedInUser> LoggedInUsers { get; set; }
-    public DbSet<Product> Products { get; set; }
     public DbSet<ProductType> ProductTypes { get; set; }
-    public DbSet<ProductMetadata> ProductMetadata { get; set; }
-
-    /// <summary>
-    /// <c>WalInterceptor</c> is a wrapper class used to enable WAL journal mode in the database, so that
-    /// it has better write concurrency.
-    /// </summary>
-    private class WalInterceptor : DbConnectionInterceptor
-    {
-        public override ValueTask<InterceptionResult> ConnectionOpeningAsync(DbConnection connection, ConnectionEventData eventData, InterceptionResult result,
-            CancellationToken cancellationToken = default)
-        {
-            if (connection is SqliteConnection)
-            {
-                using var command = connection.CreateCommand();
-                command.CommandText = "PRAGMA journal_mode=WAL";
-                command.ExecuteNonQuery();
-            }
-            return new ValueTask<InterceptionResult>(result);
-        }
-    }
+    public DbSet<Customer> Customers { get; set; }
+    public DbSet<Product> Products { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
-        optionsBuilder.UseSqlite("Data Source=cb.db;BusyTimeout=5000");
-        optionsBuilder.AddInterceptors(new WalInterceptor());
+        SqliteConnection conn = new SqliteConnection("Data Source=CentralDatabase.db");
+        conn.Open();
+
+        SqliteCommand command = conn.CreateCommand();
+        command.CommandText = "PRAGMA journal_mode=WAL;PRAGMA busy_timeout=5000;";
+        command.ExecuteNonQuery();
+        
+        optionsBuilder.UseSqlite(conn);
     }
 
-    public CentralContext()
+    static CentralContext()
     {
-        Database.EnsureCreated();
+        new CentralContext().Database.EnsureCreated();
     }
 }

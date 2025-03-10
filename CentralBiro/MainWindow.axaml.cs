@@ -1,10 +1,10 @@
 using System;
-using System.Diagnostics;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using System.IO;
 using System.Net;
 using Avalonia.Media;
+using CentralBiro.Service;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,11 +16,11 @@ namespace CentralBiro;
 
 public partial class MainWindow : Window
 {
-    public static string RootPathUrl { get; } = Directory.GetCurrentDirectory();
+    private static string RootPathUrl { get; } = Directory.GetCurrentDirectory();
     private static readonly string CertPath = RootPathUrl + Path.DirectorySeparatorChar + "certs";
     private static readonly string RootPath = RootPathUrl + Path.DirectorySeparatorChar + "www";
 
-    private WebApplication _app;
+    private WebApplication? _app;
     private const int HttpPort = 4999;
     private const int HttpsPort = 5000;
     
@@ -51,12 +51,11 @@ public partial class MainWindow : Window
         }
     }
 
-    class WindowLogger(string categoryName, MainWindow window) : ILogger
+    class WindowLogger(MainWindow window) : ILogger
     {
-        private readonly string _categoryName = categoryName;
         private readonly MainWindow _window = window;
         
-        public IDisposable BeginScope<TState>(TState state)
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull
         {
             return null;
         }
@@ -79,18 +78,17 @@ public partial class MainWindow : Window
                 LogLevel.Warning => Colors.Yellow,
                 LogLevel.Error => Colors.Orange,
                 LogLevel.Critical => Colors.Red,
+                _ => Colors.White
             };
-            _window.Log(logMessage);
+            _window.Log(logMessage, color);
         }
     }
 
     public class WindowLoggerProvider(MainWindow window) : ILoggerProvider
     {
-        private readonly MainWindow _window = window;
-        
         public ILogger CreateLogger(string categoryName)
         {
-            return new WindowLogger(categoryName, window);
+            return new WindowLogger(window);
         }
 
         public void Dispose()
@@ -127,7 +125,7 @@ public partial class MainWindow : Window
     private void StopServer(object? sender, RoutedEventArgs e)
     {
         StopServerButton.IsEnabled = false;
-        _app.DisposeAsync();
+        _app?.DisposeAsync();
         StartServerButton.IsEnabled = true;
         Log("Server stopped.");
     }

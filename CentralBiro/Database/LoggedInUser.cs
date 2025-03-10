@@ -39,7 +39,5 @@ public class LoggedInUser(User user, byte[] token)
     /// <c>LoggedInUser</c> class represents an instance of a user's log-in session and is used to check for
     /// its validity and expiration. This constructor creates a blank session which should not be stored in the database.
     /// </summary>
-    /// <param name="user">Instance of the <c>User</c> class for the user who has logged in</param>
-    /// <param name="token">Number used to track and verify the user's identity</param>
-    public LoggedInUser() : this(null, new byte[0]) {}
+    public LoggedInUser() : this(null, []) {}
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using CentralBiro.Database;
+using Microsoft.EntityFrameworkCore;
 
 namespace CentralBiro.Service;
 
@@ -18,7 +19,7 @@ public class ProductDatabase
         lock (_productTypes)
         {
             if (_productTypes.ContainsKey(productType.Id)) return;
-            int nextSerialNumber;
+            int nextSerialNumber = 0;
             try{nextSerialNumber = new CentralContext().Products.Max(p => p.SerialNumber) + 1;}
             catch(InvalidOperationException){nextSerialNumber = 1;}
             
@@ -33,8 +34,7 @@ public class ProductDatabase
         lock (_productTypes)
         lock (_productTypesByName)
         {
-            int id;
-            bool found = _productTypesByName.TryGetValue(name, out id);
+            bool found = _productTypesByName.TryGetValue(name, out int id);
             if (found) return _productTypes[id];
             
             ProductType? productType = new CentralContext().ProductTypes.SingleOrDefault(type => type.Name == name);
@@ -49,8 +49,7 @@ public class ProductDatabase
     {
         lock (_productTypes)
         {
-            ProductType? productType;
-            bool found = _productTypes.TryGetValue(id, out productType);
+            bool found = _productTypes.TryGetValue(id, out ProductType? productType);
             if (found) return productType;
             
             productType = new CentralContext().ProductTypes.SingleOrDefault(type => type.Id == id);
@@ -60,4 +59,34 @@ public class ProductDatabase
             return _productTypes[productType.Id];
         }
     }
+
+    public ProductType? AddProductType(string name, int id = -1)
+    {
+        if (id == -1)
+        {
+            try
+            {
+                id = new CentralContext().ProductTypes.Max(type => type.Id) + 1;
+            }
+            catch (InvalidOperationException)
+            {
+                id = 1;
+            }
+        }
+
+        ProductType productType = new ProductType(name, id, 1);
+        using var context = new CentralContext();
+        context.ProductTypes.Add(productType);
+        try
+        {
+            context.SaveChanges();
+        }
+        catch (DbUpdateException)
+        {
+            return null;
+        }
+        
+        CacheProductType(productType);
+        return productType;
+    } 
 }

@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+using CentralBiro.Contract;
 using CentralBiro.Database;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -11,24 +12,11 @@ using Microsoft.EntityFrameworkCore;
 namespace CentralBiro.Service;
 
 /// <summary>
-/// <c>LoginResponse</c> struct is used to store data pertaining to the server's response to a login attempt 
-/// </summary>
-/// <param name="success">Indicates whether the login has been successful</param>
-/// <param name="token">If <see cref="Success"/> is true, contains a valid non-expired token associated with the user
-/// otherwise, it may contain any data</param>
-public struct LoginResponse(bool success, byte[] token)
-{
-    ///<value>Indicates whether the login has been successful</value>
-    public bool Success { get; set; } = success;
-    ///<value>If <see cref="Success"/> is true, contains a valid non-expired token associated with the user
-    /// otherwise, it may contain any data</value>
-    public byte[] Token { get; set; } = token;
-}
-
-/// <summary>
 /// <c>LoginManager</c> class is used to allow a user to login and subsequently verify that they are making requests
 /// </summary>
-public class LoginManager
+[ApiController]
+[Route("api/login")]
+public class LoginManager : ControllerBase
 {
     ///<value>
     /// <c>TokenDeletionActivation</c> is a constant indication the period in milliseconds
@@ -36,8 +24,7 @@ public class LoginManager
     /// </value>
     private const int TokenDeletionActivation = 5 * 60 * 1000;
     
-    private LoginManager()
-    {
+    static LoginManager() {
         //Thread which periodically removes expired tokens
         new Thread(() =>
         {
@@ -49,13 +36,11 @@ public class LoginManager
         }){IsBackground = true}.Start();
     }
 
-    public static LoginManager Instance { get; } = new LoginManager();
-
     /// <summary>
     /// <c>DeleteExpiredTokens</c> is run periodically in a thread created in the constructor
     /// to delete any tokens that have expired.
     /// </summary>
-    private void DeleteExpiredTokens()
+    private static void DeleteExpiredTokens()
     {
         using var context = new CentralContext();
         context.LoggedInUsers.Where(user => DateTime.Now > user.Expiration).ExecuteDelete();
@@ -254,18 +239,21 @@ public class LoginManager
         LoggedInUser? loggedInUser = context.LoggedInUsers.Include(user => user.User).FirstOrDefault(user => user.Token == token);
         return loggedInUser?.User.Id;
     }
-}
 
-/// <summary>
-/// <c>LoginController</c> class is used to receive http requests for logging in.<br/>
-/// It processes any url starting with <c>api/login</c>.
-/// </summary>
-[ApiController]
-[Route("api/login")]
-public class LoginController : ControllerBase
-{
     /// <summary>
-    /// <c>LoginRequest</c> processes a login request and generates a token if it is valid or fetches an exisiting token
+    /// <c>GetUser</c> fetches an instance of the <see cref="User"/> who is associated with the token
+    /// </summary>
+    /// <param name="token">User's non-expired token</param>
+    /// <returns>A <see cref="User"/> instance if their token is valid, otherwise null</returns>
+    public User? GetUser(byte[] token)
+    {
+        using var context = new CentralContext();
+        LoggedInUser? loggedInUser = context.LoggedInUsers.Include(user => user.User).FirstOrDefault(user => user.Token == token);
+        return loggedInUser?.User;
+    }
+    
+        /// <summary>
+    /// <c>LoginRequest</c> processes a login request and generates a token if it is valid or fetches an existing token
     /// </summary>
     /// <param name="username">User's username</param>
     /// <param name="password">User's password in plaintext</param>
@@ -292,12 +280,12 @@ public class LoginController : ControllerBase
             return NotFound(new LoginResponse(false, "No user with provided username/password combination"u8.ToArray()));
         
         //Check if the password matches with the user's database record
-        byte[] hashedPassword = LoginManager.Instance.CalculateHashedPassword(password, user.Salt);
+        byte[] hashedPassword = CalculateHashedPassword(password, user.Salt);
         if (!user.Password.SequenceEqual(hashedPassword))
             return NotFound(new LoginResponse(false, "No user with provided username/password combination"u8.ToArray()));
 
         //Fetch a logged-in user's token/generate a new token
-        byte[] token = LoginManager.Instance.GetToken(user);
+        byte[] token = GetToken(user);
         return Ok(new LoginResponse(true, token));
     }
 }

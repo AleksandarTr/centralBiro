@@ -1,5 +1,6 @@
 using System.Xml.Serialization;
 using CentralBiro;
+using CentralBiro.Contract;
 using CentralBiro.Database;
 using CentralBiro.Service;
 using FluentAssertions;
@@ -17,7 +18,8 @@ public class LoginManagerTest
     [TestCase("___", "Tsadf@536asf")]
     public void AddUserTest(string username, string password)
     {
-        bool actual = LoginManager.Instance.AddUser(username, password);
+        LoginManager loginManager = new();
+        bool actual = loginManager.AddUser(username, password);
         CentralContext context = new CentralContext();
 
         User[] users = context.Users.Where(user => user.Username == username).ToArray();
@@ -27,7 +29,7 @@ public class LoginManagerTest
         Assert.Greater(users[0].Salt.Length, 0); // The salt should not be empty
         Assert.Greater(users[0].Password.Length, 0); // The password should not be empty
         
-        byte[] expectedPassword = LoginManager.Instance.CalculateHashedPassword(password, users[0].Salt);
+        byte[] expectedPassword = loginManager.CalculateHashedPassword(password, users[0].Salt);
         CollectionAssert.AreEqual(expectedPassword, users[0].Password); // Checking if the password is properly set
     }
 
@@ -38,8 +40,9 @@ public class LoginManagerTest
     [TestCase("___", "Tsadf@536asf")]
     public void AddDuplicateUserTest(string username, string password)
     {
-        LoginManager.Instance.AddUser(username, password);
-        Assert.Throws<DbUpdateException>(() => LoginManager.Instance.AddUser(username, password)); // Making sure that two users cannot have the same username
+        LoginManager loginManager = new();
+        loginManager.AddUser(username, password);
+        Assert.Throws<DbUpdateException>(() => loginManager.AddUser(username, password)); // Making sure that two users cannot have the same username
     }
 
     [Test]
@@ -53,9 +56,10 @@ public class LoginManagerTest
     [TestCase("szgoij^")]
     public void AddUserWithInvalidUsernameTest(string username)
     {
+        LoginManager loginManager = new();
         string password = "Test_1__abcdef";
         
-        Assert.Throws<ArgumentException>(() => LoginManager.Instance.AddUser(username, password));
+        Assert.Throws<ArgumentException>(() => loginManager.AddUser(username, password));
     }
 
     [Test]
@@ -70,14 +74,16 @@ public class LoginManagerTest
     [TestCase("Ahdnpok34535")]
     public void AddUserWithInvalidPasswordTest(string password)
     {
+        LoginManager loginManager = new();
         string username = "Test_123";
         
-        Assert.Throws<ArgumentException>(() => LoginManager.Instance.AddUser(username, password));
+        Assert.Throws<ArgumentException>(() => loginManager.AddUser(username, password));
     }
 
     [Test]
     public void VerifyValidTokenTest()
     {
+        LoginManager loginManager = new();
         byte[] token = "8994b6ff9963b65251b22bd8f251c12f03e6179f9c54205430aee4546a6d73d1"u8.ToArray();
         User user = new User("Test1234", new byte[] { }, new byte[] { });
         LoggedInUser prev = new LoggedInUser(user, token);
@@ -89,7 +95,7 @@ public class LoginManagerTest
         }
         Thread.Sleep(10);
         
-        bool actual = LoginManager.Instance.Verify(token);
+        bool actual = loginManager.Verify(token);
         LoggedInUser curr;
         using (CentralContext context = new CentralContext())
         {
@@ -103,9 +109,10 @@ public class LoginManagerTest
     [Test]
     public void VerifyInvalidTokenTest()
     {
+        LoginManager loginManager = new();
         byte[] token = "8994b6ff9963b65251b22bd8f251c12f03e6179f9c54205430aee4546a6d73d1"u8.ToArray();
         
-        bool actual = LoginManager.Instance.Verify(token);
+        bool actual = loginManager.Verify(token);
         
         Assert.IsFalse(actual);
     }
@@ -113,6 +120,7 @@ public class LoginManagerTest
     [Test]
     public void GetUsernameWithValidTokenTest()
     {
+        LoginManager loginManager = new();
         byte[] token = "8994b6ff9963b65251b22bd8f251c12f03e6179f9c54205430aee4546a6d73d1"u8.ToArray();
         string expectedUsername = "Test_123";
         CentralContext context = new CentralContext();
@@ -122,7 +130,7 @@ public class LoginManagerTest
         context.LoggedInUsers.Add(new LoggedInUser(user, token));
         context.SaveChanges();
         
-        string actual = LoginManager.Instance.GetUsername(token);
+        string actual = loginManager.GetUsername(token);
         
         Assert.AreEqual(expectedUsername, actual);
     }
@@ -130,10 +138,11 @@ public class LoginManagerTest
     [Test]
     public void GetUsernameWithInvalidTokenTest()
     {
+        LoginManager loginManager = new();
         byte[] token = "8994b6ff9963b65251b22bd8f251c12f03e6179f9c54205430aee4546a6d73d1"u8.ToArray();
         string? expectedUsername = null;
         
-        string? actual = LoginManager.Instance.GetUsername(token);
+        string? actual = loginManager.GetUsername(token);
         
         Assert.AreEqual(expectedUsername, actual);
     }
@@ -141,6 +150,7 @@ public class LoginManagerTest
     [Test]
     public void GetIdWithValidTokenTest()
     {
+        LoginManager loginManager = new();
         byte[] token = "8994b6ff9963b65251b22bd8f251c12f03e6179f9c54205430aee4546a6d73d1"u8.ToArray();
         CentralContext context = new CentralContext();
         User user = new User("test", new byte[] { }, new byte[] { });
@@ -150,7 +160,7 @@ public class LoginManagerTest
         context.LoggedInUsers.Add(new LoggedInUser(user, token));
         context.SaveChanges();
         
-        int? actual = LoginManager.Instance.GetId(token);
+        int? actual = loginManager.GetId(token);
         
         Assert.AreEqual(expected, actual);
     }
@@ -158,10 +168,11 @@ public class LoginManagerTest
     [Test]
     public void GetIdWithInvalidTokenTest()
     {
+        LoginManager loginManager = new();
         byte[] token = "8994b6ff9963b65251b22bd8f251c12f03e6179f9c54205430aee4546a6d73d1"u8.ToArray();
         int? expected = null;
         
-        int? actual = LoginManager.Instance.GetId(token);
+        int? actual = loginManager.GetId(token);
         
         Assert.AreEqual(expected, actual);
     }
@@ -173,9 +184,10 @@ public class LoginManagerTest
     [TestCase("___", "Tsadf@536asf")]
     public void ValidLoginRequestTest(string username, string password)
     {
-        LoginManager.Instance.AddUser(username, password);
+        LoginManager loginManager = new();
+        loginManager.AddUser(username, password);
         
-        var result = new LoginController().LoginRequest(username, password);
+        var result = loginManager.LoginRequest(username, password);
         
         Assert.IsInstanceOf<OkObjectResult>(result);
         Assert.IsInstanceOf<LoginResponse>((result as OkObjectResult)!.Value);
@@ -190,15 +202,16 @@ public class LoginManagerTest
     [TestCase(3)]
     public void MissingArgumentLoginRequestTest(int testCase)
     {
+        LoginManager loginManager = new();
         string username = "test_1";
         string password = "Test_1__abcdef";
-        LoginManager.Instance.AddUser(username, password);
+        loginManager.AddUser(username, password);
 
         var result = testCase switch
         {
-            1 => new LoginController().LoginRequest(username: username),
-            2 => new LoginController().LoginRequest(password: password),
-            3 => new LoginController().LoginRequest(),
+            1 => loginManager.LoginRequest(username: username),
+            2 => loginManager.LoginRequest(password: password),
+            3 => loginManager.LoginRequest(),
         };
         
         Assert.IsInstanceOf<BadRequestObjectResult>(result);
@@ -210,10 +223,11 @@ public class LoginManagerTest
     [Test]
     public void MissingUserLoginRequestTest()
     {
+        LoginManager loginManager = new();
         string username = "test_1";
         string password = "Test_1__abcdef";
         
-        var result = new LoginController().LoginRequest(username, password);
+        var result = loginManager.LoginRequest(username, password);
         
         Assert.IsInstanceOf<NotFoundObjectResult>(result);
         Assert.IsInstanceOf<LoginResponse>((result as NotFoundObjectResult)!.Value);
@@ -225,5 +239,6 @@ public class LoginManagerTest
     public void SetUp()
     {
         new CentralContext().Database.EnsureDeleted();
+        new CentralContext().Database.EnsureCreated();
     }
 }
