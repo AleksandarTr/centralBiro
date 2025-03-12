@@ -235,6 +235,25 @@ public class LoginManagerTest
         Assert.IsFalse(actual?.Success);
     }
 
+    [Test]
+    public void ConcurrentUserLoginRequestTest()
+    {
+        string username = "test_1";
+        string password = "Test_1__abcdef";
+        LoginManager loginManager = new();
+        loginManager.AddUser(username, password);
+        
+        Task<IActionResult> login1 = Task.Run(() => loginManager.LoginRequest(username, password));
+        Task<IActionResult> login2 = Task.Run(() => loginManager.LoginRequest(username, password));
+        Task.WhenAll(login1, login2);
+        LoginResponse? actual1 = (login1.Result as ObjectResult)!.Value as LoginResponse?;
+        LoginResponse? actual2 = (login2.Result as ObjectResult)!.Value as LoginResponse?;
+        
+        Assert.IsTrue(actual1?.Success);
+        Assert.IsTrue(actual2?.Success);
+        Assert.AreEqual(actual1?.Token, actual2?.Token);
+    }
+
     [SetUp]
     public void SetUp()
     {

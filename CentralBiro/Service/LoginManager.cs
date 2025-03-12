@@ -23,6 +23,7 @@ public class LoginManager : ControllerBase
     /// of the <see cref="DeleteExpiredTokens"/> activation.
     /// </value>
     private const int TokenDeletionActivation = 5 * 60 * 1000;
+    private static readonly Object Lock = new();
     
     static LoginManager() {
         //Thread which periodically removes expired tokens
@@ -42,9 +43,12 @@ public class LoginManager : ControllerBase
     /// </summary>
     private static void DeleteExpiredTokens()
     {
-        using var context = new CentralContext();
-        context.LoggedInUsers.Where(user => DateTime.Now > user.Expiration).ExecuteDelete();
-        context.SaveChanges();
+        lock (Lock)
+        {
+            using var context = new CentralContext();
+            context.LoggedInUsers.Where(user => DateTime.Now > user.Expiration).ExecuteDelete();
+            context.SaveChanges();
+        }
     }
 
     /// <summary>
@@ -113,11 +117,14 @@ public class LoginManager : ControllerBase
     /// <returns>The user's token in the form of a byte array</returns>
     public byte[] GetToken(User user)
     {
-        using var context = new CentralContext();
-        LoggedInUser? loggedInUser = context.LoggedInUsers.FirstOrDefault(u => u.User == user);
-        if (loggedInUser == null) loggedInUser = AddLoggedInUser(user, GenerateToken());
-        else ExtendLoggedInUser(loggedInUser);
-        return loggedInUser.Token;
+        lock (Lock)
+        {
+            using var context = new CentralContext();
+            LoggedInUser? loggedInUser = context.LoggedInUsers.FirstOrDefault(u => u.User == user);
+            if (loggedInUser == null) loggedInUser = AddLoggedInUser(user, GenerateToken());
+            else ExtendLoggedInUser(loggedInUser);
+            return loggedInUser.Token;
+        }
     }
 
     /// <summary>
@@ -131,8 +138,9 @@ public class LoginManager : ControllerBase
     {
         using var context = new CentralContext();
         LoggedInUser? loggedInUser = context.LoggedInUsers.Find(token);
-        if (loggedInUser != null) ExtendLoggedInUser(loggedInUser);//This method is called when a user sends a request
-                                                                   //so their session gets extended
+        if (loggedInUser != null) lock(Lock) ExtendLoggedInUser(loggedInUser);
+            //This method is called when a user sends a request so their session gets extended
+        
         return loggedInUser != null;
     }
 
@@ -200,6 +208,7 @@ public class LoginManager : ControllerBase
     /// follow their respective naming rules</exception>
     /// <exception cref="DbUpdateException">A problem caused by inserting the user record into the database,
     /// most likely because the username is already present in the database</exception>
+    /// <remarks>This method will only ever be called locally</remarks>
     public bool AddUser(string username, string password)
     {
         //Throw exceptions in case of username/password naming violations 
@@ -209,10 +218,11 @@ public class LoginManager : ControllerBase
         byte[] salt = GenerateToken();
         byte[] passwordHash = CalculateHashedPassword(password, salt);
         User user = new User(username, passwordHash, salt);
-
+        
         using var context = new CentralContext();
         context.Users.Add(user);
         context.SaveChanges();
+
         return true;
     }
 
@@ -252,7 +262,7 @@ public class LoginManager : ControllerBase
         return loggedInUser?.User;
     }
     
-        /// <summary>
+    /// <summary>
     /// <c>LoginRequest</c> processes a login request and generates a token if it is valid or fetches an existing token
     /// </summary>
     /// <param name="username">User's username</param>
