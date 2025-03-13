@@ -11,8 +11,6 @@ namespace CentralBiro.Database;
 /// </summary>
 /// <param name="user">Instance of the <c>User</c> class for the user who has logged in</param>
 /// <param name="token">Number used to track and verify the user's identity</param>
-[PrimaryKey(nameof(Token))]
-[Table("logged_in_user")]
 public class LoggedInUser(User user, byte[] token)
 {
     /// <value>
@@ -22,7 +20,7 @@ public class LoggedInUser(User user, byte[] token)
     public const int LoginDuration = 120;
     
     ///<value>
-    /// Instance of the <c>User</c> class for the user who has logged in
+    /// Instance of the <see cref="User"/> class for the user who has logged in
     /// </value>
     public User User { get; set; } = user;
     /// <value>
@@ -37,7 +35,8 @@ public class LoggedInUser(User user, byte[] token)
 
     /// <summary>
     /// <c>LoggedInUser</c> class represents an instance of a user's log-in session and is used to check for
-    /// its validity and expiration. This constructor creates a blank session which should not be stored in the database.
+    /// its validity and expiration. This constructor creates a blank session which should not be stored without
+    /// filling out its fields.
     /// </summary>
     public LoggedInUser() : this(null, []) {}
 }

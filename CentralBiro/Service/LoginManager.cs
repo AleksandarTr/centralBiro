@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
@@ -23,7 +24,10 @@ public class LoginManager : ControllerBase
     /// of the <see cref="DeleteExpiredTokens"/> activation.
     /// </value>
     private const int TokenDeletionActivation = 5 * 60 * 1000;
-    private static readonly Object Lock = new();
+    /// <value>
+    /// <c>LoggedInUsers</c> is a list of all users who have an active log-in session. 
+    /// </value>
+    private static readonly List<LoggedInUser> LoggedInUsers = new();
     
     static LoginManager() {
         //Thread which periodically removes expired tokens
@@ -43,12 +47,8 @@ public class LoginManager : ControllerBase
     /// </summary>
     private static void DeleteExpiredTokens()
     {
-        lock (Lock)
-        {
-            using var context = new CentralContext();
-            context.LoggedInUsers.Where(user => DateTime.Now > user.Expiration).ExecuteDelete();
-            context.SaveChanges();
-        }
+        lock (LoggedInUsers)
+            LoggedInUsers.RemoveAll(u => u.Expiration < DateTime.Now);
     }
 
     /// <summary>
@@ -66,7 +66,7 @@ public class LoginManager : ControllerBase
     }
 
     /// <summary>
-    /// <c>AddLoggedInUser</c> is used to store a new <see cref="LoggedInUser"/> in the database.
+    /// <c>AddLoggedInUser</c> is used to store a new <see cref="LoggedInUser"/>.
     /// </summary>
     /// <param name="user">The user who has just logged in</param>
     /// <param name="token">The token generated for the user</param>
@@ -74,11 +74,7 @@ public class LoginManager : ControllerBase
     private LoggedInUser AddLoggedInUser(User user, byte[] token)
     {
         LoggedInUser loggedInUser = new LoggedInUser(user, token);
-        using var context = new CentralContext();
-        context.Attach(user); //The user needs to be attached, because otherwise the context will try to add it,
-                              //resulting in a unique constraint violation
-        context.LoggedInUsers.Add(loggedInUser);
-        context.SaveChanges();
+        LoggedInUsers.Add(loggedInUser);
         return loggedInUser;
     }
     
@@ -90,9 +86,6 @@ public class LoginManager : ControllerBase
     private void ExtendLoggedInUser(LoggedInUser user)
     {
         user.Expiration = DateTime.Now.AddMinutes(LoggedInUser.LoginDuration);
-        using var context = new CentralContext();
-        context.LoggedInUsers.Update(user);
-        context.SaveChanges();
     }
 
     /// <summary>
@@ -117,11 +110,16 @@ public class LoginManager : ControllerBase
     /// <returns>The user's token in the form of a byte array</returns>
     public byte[] GetToken(User user)
     {
-        lock (Lock)
+        lock (LoggedInUsers)
         {
             using var context = new CentralContext();
-            LoggedInUser? loggedInUser = context.LoggedInUsers.FirstOrDefault(u => u.User == user);
-            if (loggedInUser == null) loggedInUser = AddLoggedInUser(user, GenerateToken());
+            LoggedInUser? loggedInUser = LoggedInUsers.Find(u => u.User.Id == user.Id);
+            if (loggedInUser == null)
+            {
+                byte[] token = GenerateToken();
+                while(LoggedInUsers.Find(u => u.Token == token) != null) token = GenerateToken();
+                loggedInUser = AddLoggedInUser(user, token);
+            }
             else ExtendLoggedInUser(loggedInUser);
             return loggedInUser.Token;
         }
@@ -137,8 +135,8 @@ public class LoginManager : ControllerBase
     public bool Verify(byte[] token)
     {
         using var context = new CentralContext();
-        LoggedInUser? loggedInUser = context.LoggedInUsers.Find(token);
-        if (loggedInUser != null) lock(Lock) ExtendLoggedInUser(loggedInUser);
+        LoggedInUser? loggedInUser = LoggedInUsers.Find(u => u.Token == token);
+        if (loggedInUser != null) lock(LoggedInUsers) ExtendLoggedInUser(loggedInUser);
             //This method is called when a user sends a request so their session gets extended
         
         return loggedInUser != null;
@@ -234,7 +232,7 @@ public class LoginManager : ControllerBase
     public string? GetUsername(byte[] token)
     {
         using var context = new CentralContext();
-        LoggedInUser? loggedInUser = context.LoggedInUsers.Include(user => user.User).FirstOrDefault(user => user.Token == token);
+        LoggedInUser? loggedInUser = LoggedInUsers.Find(u => u.Token == token);
         return loggedInUser?.User.Username;
     }
 
@@ -246,7 +244,7 @@ public class LoginManager : ControllerBase
     public int? GetId(byte[] token)
     {
         using var context = new CentralContext();
-        LoggedInUser? loggedInUser = context.LoggedInUsers.Include(user => user.User).FirstOrDefault(user => user.Token == token);
+        LoggedInUser? loggedInUser = loggedInUser = LoggedInUsers.Find(u => u.Token == token);
         return loggedInUser?.User.Id;
     }
 
@@ -258,7 +256,7 @@ public class LoginManager : ControllerBase
     public User? GetUser(byte[] token)
     {
         using var context = new CentralContext();
-        LoggedInUser? loggedInUser = context.LoggedInUsers.Include(user => user.User).FirstOrDefault(user => user.Token == token);
+        LoggedInUser? loggedInUser = loggedInUser = LoggedInUsers.Find(u => u.Token == token);
         return loggedInUser?.User;
     }
     

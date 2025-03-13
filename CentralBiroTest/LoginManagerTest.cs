@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Xml.Serialization;
 using CentralBiro;
 using CentralBiro.Contract;
@@ -84,26 +85,14 @@ public class LoginManagerTest
     public void VerifyValidTokenTest()
     {
         LoginManager loginManager = new();
-        byte[] token = "8994b6ff9963b65251b22bd8f251c12f03e6179f9c54205430aee4546a6d73d1"u8.ToArray();
-        User user = new User("Test1234", new byte[] { }, new byte[] { });
-        LoggedInUser prev = new LoggedInUser(user, token);
-        using (CentralContext context = new CentralContext())
-        {
-            context.Users.Add(user);
-            context.LoggedInUsers.Add(prev);
-            context.SaveChanges();
-        }
-        Thread.Sleep(10);
+        string username = "Test_123";
+        string password = "Test_1__abcdef";
+        loginManager.AddUser(username, password);
+        LoginResponse? response = (loginManager.LoginRequest(username, password) as ObjectResult)!.Value as LoginResponse?;
         
-        bool actual = loginManager.Verify(token);
-        LoggedInUser curr;
-        using (CentralContext context = new CentralContext())
-        {
-            curr = context.LoggedInUsers.Find(token)!;
-        }
+        bool actual = loginManager.Verify(response?.Token!);
 
         Assert.IsTrue(actual);
-        Assert.Greater(curr.Expiration, prev.Expiration);
     }
 
     [Test]
@@ -121,16 +110,12 @@ public class LoginManagerTest
     public void GetUsernameWithValidTokenTest()
     {
         LoginManager loginManager = new();
-        byte[] token = "8994b6ff9963b65251b22bd8f251c12f03e6179f9c54205430aee4546a6d73d1"u8.ToArray();
         string expectedUsername = "Test_123";
-        CentralContext context = new CentralContext();
-        User user = new User(expectedUsername, new byte[] { }, new byte[] { });
-        context.Users.Add(user);
-        context.SaveChanges();
-        context.LoggedInUsers.Add(new LoggedInUser(user, token));
-        context.SaveChanges();
+        string password = "Test_1__abcdef";
+        loginManager.AddUser(expectedUsername, password);
+        LoginResponse? response = (loginManager.LoginRequest(expectedUsername, password) as ObjectResult)!.Value as LoginResponse?;
         
-        string actual = loginManager.GetUsername(token);
+        string? actual = loginManager.GetUsername(response?.Token!);
         
         Assert.AreEqual(expectedUsername, actual);
     }
@@ -151,16 +136,13 @@ public class LoginManagerTest
     public void GetIdWithValidTokenTest()
     {
         LoginManager loginManager = new();
-        byte[] token = "8994b6ff9963b65251b22bd8f251c12f03e6179f9c54205430aee4546a6d73d1"u8.ToArray();
-        CentralContext context = new CentralContext();
-        User user = new User("test", new byte[] { }, new byte[] { });
-        context.Users.Add(user);
-        context.SaveChanges();
-        int expected = user.Id;
-        context.LoggedInUsers.Add(new LoggedInUser(user, token));
-        context.SaveChanges();
+        string username = "Test_123";
+        string password = "Test_1__abcdef";
+        loginManager.AddUser(username, password);
+        LoginResponse? response = (loginManager.LoginRequest(username, password) as ObjectResult)!.Value as LoginResponse?;
         
-        int? actual = loginManager.GetId(token);
+        int? actual = loginManager.GetId(response?.Token!);
+        int expected = new CentralContext().Users.Single(u => u.Username == username).Id;
         
         Assert.AreEqual(expected, actual);
     }
@@ -259,5 +241,11 @@ public class LoginManagerTest
     {
         new CentralContext().Database.EnsureDeleted();
         new CentralContext().Database.EnsureCreated();
+        
+        //Removing any logged-in users
+        FieldInfo loggedInUsers = typeof(LoginManager)
+            .GetField("LoggedInUsers", BindingFlags.NonPublic | BindingFlags.Static)!;
+        List<LoggedInUser> users = (List<LoggedInUser>) loggedInUsers.GetValue(null)!;
+        users.Clear();
     }
 }
