@@ -1,4 +1,6 @@
+using System;
 using System.Linq;
+using System.Linq.Expressions;
 using CentralBiro.Contract;
 using CentralBiro.Database;
 using Microsoft.AspNetCore.Mvc;
@@ -10,40 +12,24 @@ namespace CentralBiro.Service;
 [Route("api/customer")]
 public class CustomerManager : ControllerBase
 {
-    private Customer? GetById(int id)
-    {
-        using var context = new CentralContext();
-        Customer? customer = context.Customers.Find(id);
-        return customer;
-    }
-
-    private Customer? GetByName(string name)
-    {
-        using var context = new CentralContext();
-        Customer? customer = context.Customers.SingleOrDefault(customer => customer.Name == name);
-        return customer;
-    }
-
-    private Customer? GetByAddress(string address)
-    {
-        using var context = new CentralContext();
-        Customer? customer = context.Customers.SingleOrDefault(customer => customer.Address == address);
-        return customer;
-    }
-
+    private static readonly Object Lock = new();
+    
     public int AddCustomer(string name, string address)
     {
-        var context = new CentralContext();
-        Customer customer = new Customer(name, address);
-        context.Customers.Add(customer);
-        try
+        lock (Lock)
         {
-            context.SaveChanges();
-            return customer.Id;
-        }
-        catch (DbUpdateException)
-        {
-            return 0;
+            var context = new CentralContext();
+            Customer customer = new Customer(name, address);
+            context.Customers.Add(customer);
+            try
+            {
+                context.SaveChanges();
+                return customer.Id;
+            }
+            catch (DbUpdateException)
+            {
+                return 0;
+            }
         }
     }
 
@@ -68,7 +54,7 @@ public class CustomerManager : ControllerBase
     }
 
     /// <summary>
-    /// <c>ReadRequest</c> is an instance of a <see cref="CrudRequest"/> requesting an instance of a customer.
+    /// <c>ReadRequest</c> is an instance of a <see cref="CrudRequest"/> requesting one or more instances of a customer.
     /// </summary>
     /// <param name="request">This <see cref="CrudRequest"/> has the first int argument which determines
     /// the search parameter as follows: <br/>
@@ -84,27 +70,17 @@ public class CustomerManager : ControllerBase
 
         if (request.IntArgs.Length < 1) return BadRequest(new CrudResponse());
 
-        Customer? result;
-        switch (request.IntArgs[0])
+        using var context = new CentralContext();
+        Customer[]? result = request.IntArgs[0] switch 
         {
-            case 1: //Id
-                if (request.IntArgs.Length < 2) return BadRequest(new CrudResponse());
-                result = GetById(request.IntArgs[1]);
-                break;
-            case 2: //Name
-                if (request.StringArgs.Length < 1) return BadRequest(new CrudResponse());
-                result = GetByName(request.StringArgs[0]);
-                break;
-            case 3: //Address
-                if (request.StringArgs.Length < 1) return BadRequest(new CrudResponse());
-                result = GetByAddress(request.StringArgs[0]);
-                break;
-            default:
-                return BadRequest(new CrudResponse());
-        }
-
-        if (result is null) return NotFound(new CrudResponse());
-        return Ok(new CrudResponse(result, 1, []));
+            1 => context.Customers.Where(customer => customer.Id == request.IntArgs[1]).ToArray(), //Id
+            2 => context.Customers.Where(customer => customer.Name.ToLower().StartsWith(request.StringArgs[0].ToLower())).ToArray(), //Name
+            3 => context.Customers.Where(customer => customer.Address.ToLower().StartsWith(request.StringArgs[0].ToLower())).ToArray(), //Address
+            _ => null
+        };
+        
+        if(result is null) return BadRequest(new CrudResponse());
+        return Ok(new CrudResponse(result, result.Length, []));
     }
 
     /// <summary>
@@ -121,23 +97,26 @@ public class CustomerManager : ControllerBase
         if (!new LoginManager().Verify(request.Token))
             return Unauthorized(new CrudResponse());
         
-        if (request.IntArgs.Length < 1) return BadRequest(new CrudResponse());
-        Customer? customer = GetById(request.IntArgs[0]);
-        if(customer is null) return NotFound(new CrudResponse());
-        
-        using var context = new CentralContext();
-        if(context.Products.Count(prod => prod.Customer.Id == customer.Id) > 0)
-            return Conflict(new CrudResponse());
-        
-        context.Customers.Remove(customer);
-        try
-        {
-            context.SaveChanges();
-            return Ok(new CrudResponse(null, 1, []));
-        }
-        catch (DbUpdateException)
-        {
-            return Conflict(new CrudResponse());
+        lock (Lock) {
+            using var context = new CentralContext();
+            if (request.IntArgs.Length < 1) return BadRequest(new CrudResponse());
+            Customer? customer = context.Customers.Find(request.IntArgs[0]);
+            if (customer is null) return NotFound(new CrudResponse());
+
+            if (context.Products.Count(prod => prod.Customer.Id == customer.Id) > 0)
+                return Conflict(new CrudResponse());
+
+            
+            context.Customers.Remove(customer);
+            try
+            {
+                context.SaveChanges();
+                return Ok(new CrudResponse(null, 1, []));
+            }
+            catch (DbUpdateException)
+            {
+                return Conflict(new CrudResponse());
+            }
         }
     }
 
@@ -157,23 +136,26 @@ public class CustomerManager : ControllerBase
         
         if (request.IntArgs.Length < 1) return BadRequest(new CrudResponse());
         if (request.StringArgs.Length < 2) return BadRequest(new CrudResponse());
-        
-        Customer? customer = GetById(request.IntArgs[0]);
-        if(customer is null) return NotFound(new CrudResponse());
-        
-        using var context = new CentralContext();
-        customer.Name = request.StringArgs[0];
-        customer.Address = request.StringArgs[1];
-        context.Customers.Update(customer);
 
-        try
+        lock (Lock)
         {
-            context.SaveChanges();
-            return Ok(new CrudResponse(null, 1, []));
-        }
-        catch (DbUpdateException)
-        {
-            return Conflict(new CrudResponse());
+            using var context = new CentralContext();
+            Customer? customer = context.Customers.Find(request.IntArgs[0]);
+            if (customer is null) return NotFound(new CrudResponse());
+
+            customer.Name = request.StringArgs[0];
+            customer.Address = request.StringArgs[1];
+            context.Customers.Update(customer);
+
+            try
+            {
+                context.SaveChanges();
+                return Ok(new CrudResponse(null, 1, []));
+            }
+            catch (DbUpdateException)
+            {
+                return Conflict(new CrudResponse());
+            }
         }
     }
 }
