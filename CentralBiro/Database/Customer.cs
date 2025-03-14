@@ -1,3 +1,4 @@
+using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
@@ -10,9 +11,12 @@ namespace CentralBiro.Database;
 [Index(nameof(Name), nameof(Address), IsUnique = true)]
 public class Customer(int id, string name, string address)
 {
+    public const int MaxNameLength = 50;
+    public const int MaxAddressLength = 100;
+    public const int FirstId = 1;
     public int Id { get; set; } = id;
-    [StringLength(50)] public string Name { get; set; } = name;
-    [StringLength(100)] public string Address { get; set; } = address;
+    [StringLength(MaxNameLength)] public string Name { get; set; } = name;
+    [StringLength(MaxAddressLength)] public string Address { get; set; } = address;
     
     public Customer() : this(0, null, null) { }
 
@@ -23,9 +27,9 @@ public class Customer(int id, string name, string address)
         {
             id = new CentralContext().Customers.Max(customer => customer.Id) + 1;
         }
-        catch (DbUpdateException)
+        catch (InvalidOperationException)
         {
-            id = 1;
+            id = FirstId;
         }
 
         Id = id;

@@ -16,6 +16,9 @@ public class CustomerManager : ControllerBase
     
     public int AddCustomer(string name, string address)
     {
+        if(String.IsNullOrWhiteSpace(name) || String.IsNullOrWhiteSpace(address)) return 0;
+        if(name.Length > Customer.MaxNameLength || address.Length > Customer.MaxAddressLength) return 0; 
+        
         lock (Lock)
         {
             var context = new CentralContext();
@@ -69,6 +72,12 @@ public class CustomerManager : ControllerBase
             return Unauthorized(new CrudResponse());
 
         if (request.IntArgs.Length < 1) return BadRequest(new CrudResponse());
+        int[] requiredIntArgs = [2, 1, 1];
+        int[] requiredStringArgs = [0, 1, 1];
+        
+        if(request.IntArgs[0] < 1 || request.IntArgs[0] > 3) return BadRequest(new CrudResponse());
+        if(request.IntArgs.Length < requiredIntArgs[request.IntArgs[0] - 1]) return BadRequest(new CrudResponse());
+        if(request.StringArgs.Length < requiredStringArgs[request.IntArgs[0] - 1]) return BadRequest(new CrudResponse());
 
         using var context = new CentralContext();
         Customer[]? result = request.IntArgs[0] switch 
